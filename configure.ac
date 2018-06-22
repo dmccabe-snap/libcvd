@@ -520,11 +520,10 @@ CHECK_FOR_OPTION(videodisplay,[
 	then
 		save_LIBS="$LIBS"
 
-		APPEND(LIBS, [ -framework OpenGL /usr/X11R6/lib/libX11.dylib /usr/X11R6/lib/libGLU.dylib /usr/X11R6/lib/libGL.dylib])
+		APPEND(LIBS, [ -framework OpenGL /usr/X11R6/lib/libX11.dylib /usr/X11R6/lib/libGL.dylib])
 		# all of the following is already covered in the framework
 		# AC_CHECK_LIB(GL,glDrawPixels, [], [a=1])
-		# AC_CHECK_HEADERS(GL/glu.h, [], [a=1])
-		# AC_CHECK_LIB(GLU,gluGetString, [], [a=1])
+		# AC_CHECK_HEADERS(GL/gl.h, [], [a=1])
 
 		AC_MSG_CHECKING([for X11 using dubious methods...])
 
@@ -554,8 +553,7 @@ CHECK_FOR_OPTION(videodisplay,[
 
 		APPEND(LIBS, [-lX11 -lXext])
 		AC_CHECK_LIB(GL,glDrawPixels, [], [a=1])
-		AC_CHECK_HEADERS(GL/glu.h, [], [a=1])
-		AC_CHECK_LIB(GLU,gluGetString, [], [a=1])
+		AC_CHECK_HEADERS(GL/gl.h, [], [a=1])
 	fi
 ])
 

@@ -14,7 +14,6 @@ aptitude -PvVR install \
     libv4l-dev         \
     mesa-common-dev    \
     libgl1-mesa-dev    \
-    libglu1-mesa-dev   \
     mesa-utils         \
     freeglut3-dev      \
     ffmpeg             \
