@@ -124,10 +124,6 @@ The normal system works:
 
 libCVD fully supports parallel builds (<code>make -j48</code> for instance).
 
-\subsection OSX OSX Compilation notes
-
-To build libCVD in 32 bit mode, use the \c configure_osx_32bit script instead of directly calling the configure script.
-
 */
 
 ///////////////////////////////////////////////////////
