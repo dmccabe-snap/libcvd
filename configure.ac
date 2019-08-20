@@ -1,18 +1,21 @@
-AC_INIT(CVD,0.8)
+AC_INIT(CVD,2.1)
 AC_COPYRIGHT(Copyright foo)
+
+m4_include([m4/ax_cxx_compile_stdcxx_14.m4])
 
 AC_CONFIG_HEADERS
 AC_HEADER_STDC
-#Use builtin autoconf checks for all the programs we need.
+
 AC_PROG_AWK
 AC_PROG_CXX
+AX_CXX_COMPILE_STDCXX_14
 AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_RANLIB
-#Switch testing language to C++
+
 AC_LANG(C++)
 AC_REQUIRE_CPP
-#Start the compiler
+
 
 cvd_major=`echo $PACKAGE_VERSION | $AWK -F'\\\\.' '{print $1}'`
 cvd_minor=`echo $PACKAGE_VERSION | $AWK -F'\\\\.' '{print $2}'`
@@ -28,7 +31,7 @@ AC_SUBST(minor, $cvd_minor)
 #Lists of  optional components
 #
 
-all_options="videodisplay jpeg tiff png ffmpeg toon lapack assembler inline_asm libuvc"
+all_options="videodisplay jpeg tiff png ffmpeg toon assembler inline_asm libuvc"
 dodginess_options=
 options=
 simd_all_options=
@@ -46,7 +49,7 @@ define(APPEND, [$1="$$1 $2"])
 
 
 
-dnl TEST_AND_SET_CXXFLAG(flag, [program], [run])
+dnl TEST_AND_SET_CXXFLAG(flag, [program])
 dnl
 dnl This attempts to compile a and run program with a certain compiler flag.
 dnl If no program is given, then the minimal C++ program is compiled, and 
@@ -64,10 +67,7 @@ define([TEST_AND_SET_CXXFLAG],[
 
 	m4_if([$2],[],[pushdef(prog, [int main(){}])], [pushdef(prog, [$2])])
 
-	m4_if([$4],[run],
-		[AC_RUN_IFELSE([AC_LANG_SOURCE([prog])], [cvd_conf_test=1],[cvd_conf_test=0], [cvd_conf_test=0])],
-		[AC_COMPILE_IFELSE([AC_LANG_SOURCE([prog])], [cvd_conf_test=1],[cvd_conf_test=0])]
-	)
+	AC_COMPILE_IFELSE([AC_LANG_SOURCE([prog])], [cvd_conf_test=1],[cvd_conf_test=0])
 	
 	
 	popdef([prog])
@@ -141,7 +141,7 @@ define(SIMD_TEST, [
 			have_[]m4_tolower($1)=yes
 		elif test "$with_[]m4_tolower($1)" != "no"
 		then
-			TEST_AND_SET_CXXFLAG([$2], [$3], [for $1 support],run)
+			TEST_AND_SET_CXXFLAG([$2], [$3], [for $1 support])
 			have_[]m4_tolower($1)="$ts_success"
 		fi
 
@@ -165,67 +165,8 @@ TEST_AND_SET_CXXFLAG(-Wall)
 TEST_AND_SET_CXXFLAG(-Wextra)
 TEST_AND_SET_CXXFLAG(-pipe)
 
-
-cpp11=no
-for i in "" -std=c++14 -std=c++1y
-do
-	
-	flag="$i"
-
-	if test x$i == x
-	then
-		AC_MSG_CHECKING(For C++1y support)
-	else
-		AC_MSG_CHECKING(For C++1y support with flag $flag)
-	fi
-
-	save_CXXFLAGS="$CXXFLAGS"
-	APPEND(CXXFLAGS, $flag)
-
-	AC_COMPILE_IFELSE([AC_LANG_SOURCE([
-	#include <array>
-	constexpr int foo(int a)
-	{
-		int i=0;
-		for(i=0; i < a ;i *=2)
-			i++;
-		return i;
-	}
-	int main()
-	{
-		auto a=[[]](auto b){};
-		auto b=1;
-	}
-	])], [cpp11=yes])
-
-	AC_MSG_RESULT($cpp11)
-
-	if test x$cpp11 != xno
-	then
-		cpp11="$flag"
-		break
-	fi
-	CXXFLAGS="$save_CXXFLAGS"
-done
-
-
-if test x$cpp11 == xno
-then
-	AC_MSG_ERROR("No C++14 support. Please add to CXXFLAGS")
-fi
-
-
 #Hack: do this properly
 AC_CHECK_LIB(pthread, main,[],[a=1])
-
-
-APPEND(CPPFLAGS, [-I"$(eval echo $includedir)"])
-
-########################################
-#
-# Remove -O2 from CXXFLAGS
-# 
-CXXFLAGS="$(echo "$CXXFLAGS" | sed -e's/-O2//')"
 
 
 ########################################
@@ -238,33 +179,10 @@ then
 	TEST_AND_SET_CXXFLAG(-ggdb)
 fi
 
-
-########################################
-#
-# Debug build
-#
-AC_ARG_ENABLE(debug,   [  --disable-debug            disable debug build])
-if test "$enable_debug" != no
-then
-	AC_MSG_CHECKING([if -D_GLIBCXX_DEBUG can works...])
-	AC_COMPILE_IFELSE([AC_LANG_SOURCE([
-	#define _GLIBCXX_DEBUG
-	#include <iostream>
-	#include <vector>
-	int main()
-	{}
-	])], [debug=yes],[debug=no])]
-
-	AC_MSG_RESULT([$debug])
-
-	if test "$debug" == yes
-	then
-		AC_SUBST(STLDEBUG, [-D_GLIBCXX_DEBUG])
-	fi
-
-	AC_SUBST(debug_build, yes)
-else
-	AC_SUBST(debug_build, no)
+AC_ARG_ENABLE(shared, [   --disable-ggdb           disable shared library support])
+if test "$enable_shared" != no
+then 
+	AC_SUBST(have_shared,yes)
 fi
 
 
@@ -282,27 +200,6 @@ then
 	fi
 fi
 
-
-########################################
-#
-# CPU type detection and optimization
-#
-noopt_CXXFLAGS="$CXXFLAGS"
-CXXFLAGS=
-
-AC_ARG_WITH(optimize,   [  --without-optimize      compile without optimizations ],[optimize=no],[])
-AC_ARG_WITH(optimize,   [  --with-optimize=flags   compile with optimization flags],[optimize="$withval"], [optimize=-O3])
-
-if test "$optimize" != no
-then
-	TEST_AND_SET_CXXFLAG(-O3)
-	if test $ts_success == no
-	then
-		AC_MSG_WARN([I do not know how to switch on optimizing for this compiler])
-	fi
-fi
-OFLAGS="$CXXFLAGS"
-CXXFLAGS="$noopt_CXXFLAGS"
 
 ################################################################################
 #
@@ -434,14 +331,6 @@ AC_ARG_WITH(v4l2buffer,[  --without-v4l2buffer	  compile without v4l2buffer (Vid
 
 if test "$host_vendor" == apple
 then
-	AC_CHECK_FILE(/opt/local, [
-		APPEND(CPPFLAGS, [-I/opt/local/include])
-		APPEND(LIBS, [-L/opt/local/lib])], 
-		[])
-	AC_CHECK_FILE(/sw, [
-		APPEND(CPPFLAGS, [-I/sw/include])
-		APPEND(LIBS, [-L/sw/lib])], 
-		[])
 	APPEND(CPPFLAGS, [-I/usr/X11R6/include])
 	AC_MSG_NOTICE([Adding /usr/X11R6/include to the build path.])
 	AC_SUBST(osx_hacks,yes)
@@ -479,21 +368,6 @@ case "$host" in
 		
 esac
 
-
-if test "$host_vendor" == apple
-then
-	CHECK_FOR_OPTION(qtbuffer,[
-		APPEND(LIBS, [-framework Carbon -framework QuickTime])
-		AC_MSG_CHECKING(Carbon and QuickTime framework)
-		AC_COMPILE_IFELSE([AC_LANG_SOURCE([ #include <Carbon/Carbon.h>
-							#include <QuickTime/QuickTime.h>
-							int main(){InitCursor();EnterMovies();return 0;}])],
-							[AC_MSG_RESULT(yes)], 
-							[AC_MSG_RESULT(no); a=1]) 
-	])
-fi
-
-
 ################################################################################
 #
 #Check for optional libraries
@@ -511,52 +385,28 @@ AC_ARG_WITH(tiff, [  --without-tiff          compile without TIFF support])
 AC_ARG_WITH(png, [  --without-png           compile without PNG support])
 AC_ARG_WITH(ffmpeg, [  --without-ffmpeg	  compile without FFMPEG support.])
 AC_ARG_WITH(toon, [  --without-toon          Compile without TooN support])
-AC_ARG_WITH(lapack, [  --without-lapack        Disable BLAS and LAPACK.])
-AC_ARG_WITH(acml, [  --with-acml[[=directory]] Use BLAS and LAPACK routines from the ACML library [[located in the specified directory]] ], [opt_acml_dir=$withval])
 
 CHECK_FOR_OPTION(videodisplay,[
-
 	if test "$host_vendor" == apple
 	then
-		save_LIBS="$LIBS"
-
-		APPEND(LIBS, [ -framework OpenGL /usr/X11R6/lib/libX11.dylib /usr/X11R6/lib/libGLU.dylib /usr/X11R6/lib/libGL.dylib])
-		# all of the following is already covered in the framework
-		# AC_CHECK_LIB(GL,glDrawPixels, [], [a=1])
-		# AC_CHECK_HEADERS(GL/glu.h, [], [a=1])
-		# AC_CHECK_LIB(GLU,gluGetString, [], [a=1])
-
-		AC_MSG_CHECKING([for X11 using dubious methods...])
-
-		a=
-		AC_COMPILE_IFELSE([AC_LANG_SOURCE([#include <X11/Xlib.h>
-		int main()
-		{
-			XOpenDisplay(NULL);
-		}])],  [AC_MSG_RESULT(yes)],[AC_MSG_RESULT(no); a=1]) 
-		
-		if test x$a == x1
-		then
-			LIBS="$save_LIBS"
-		fi
-	else
-
-		AC_PATH_X
-		if test x"$x_includes" != x
-		then
-			APPEND(CXXFLAGS, -I$x_includes)
-		fi
-
-		if test "$x_libraries" != ""
-		then
-			APPEND(LIBS, [-L$x_libraries])
-		fi
-
-		APPEND(LIBS, [-lX11 -lXext])
-		AC_CHECK_LIB(GL,glDrawPixels, [], [a=1])
-		AC_CHECK_HEADERS(GL/glu.h, [], [a=1])
-		AC_CHECK_LIB(GLU,gluGetString, [], [a=1])
+		APPEND(LIBS, [ -framework OpenGL ])
 	fi
+
+	AC_PATH_X
+	if test x"$x_includes" != x
+	then
+		APPEND(CXXFLAGS, -I$x_includes)
+	fi
+
+	if test "$x_libraries" != ""
+	then
+		APPEND(LIBS, [-L$x_libraries])
+	fi
+
+	APPEND(LIBS, [-lX11 -lXext])
+	AC_CHECK_LIB(GL,glDrawPixels, [], [a=1])
+	AC_CHECK_HEADERS(GL/glu.h, [], [a=1])
+	AC_CHECK_LIB(GLU,gluGetString, [], [a=1])
 ])
 
 CHECK_FOR_OPTION(toon, [
@@ -564,65 +414,6 @@ CHECK_FOR_OPTION(toon, [
 	AC_COMPILE_IFELSE([AC_LANG_SOURCE([#include <TooN/TooN.h>
 	int main(){TooN::Vector<2, double> v=TooN::Zeros;return 0;}])], [AC_MSG_RESULT(yes)],[AC_MSG_RESULT(no); a=1]) 
 ])
-
-CHECK_FOR_OPTION(lapack, [
-	if test "$with_acml" != no
-	then
-		if test "$with_acml" != yes & test "$with_acml" != ""
-		then
-			APPEND(LIBS, -L $with_acml)
-		else
-			APPEND(LIBS, -L/opt/acml/gnu64/lib)
-		fi
-		APPEND(LIBS, -lacml_mv)
-
-		AC_CHECK_LIB(acml, dgesvd_, [], [a=1])
-	else
-		a=1
-	fi
-])
-
-CHECK_FOR_OPTION(lapack, [
-	AC_MSG_CHECKING(if Accelerate framework is needed for LAPACK)
-	AC_MSG_RESULT()
-	APPEND(LIBS, -framework Accelerate)
-	AC_CHECK_FUNC(dgesvd_, [], [a=1])
-])
-
-
-
-CHECK_FOR_OPTION(lapack, [
-	AC_CHECK_LIB(lapack, dgesvd_, [], [a=1])
-])
-
-CHECK_FOR_OPTION(lapack, [
-	AC_MSG_CHECKING(if blas is needed for LAPACK)
-	AC_MSG_RESULT()
-	APPEND(LIBS, -lblas)
-	AC_CHECK_LIB(lapack, zupmtr_, [], [a=1])
-])
-
-CHECK_FOR_OPTION(lapack, [
-	AC_MSG_CHECKING(if f2c is needed for LAPACK)
-	AC_MSG_RESULT()
-	APPEND(LIBS, -lf2c)
-	AC_CHECK_LIB(lapack, dpotrf_, [], [a=1])
-])
-
-CHECK_FOR_OPTION(lapack, [
-	AC_MSG_CHECKING(if g2c is needed for LAPACK)
-	AC_MSG_RESULT()
-	APPEND(LIBS, -lg2c)
-	AC_CHECK_LIB(lapack, dpotrs_, [], [a=1])
-])
-
-CHECK_FOR_OPTION(lapack, [
-	AC_MSG_CHECKING(if gfortran is needed for LAPACK)
-	AC_MSG_RESULT()
-	APPEND(LIBS, -lgfortran)
-	AC_CHECK_LIB(lapack, dpotri_, [], [a=1])
-])
-
 
 
 CHECK_FOR_OPTION(libuvc, [
@@ -659,19 +450,6 @@ CHECK_FOR_OPTION(jpeg, [
 CHECK_FOR_OPTION(tiff, [
 	AC_CHECK_HEADERS(tiffio.h,[],[a=1])
 	AC_CHECK_LIB(tiff, TIFFReadRGBAImage,[],[a=1])
-])
-
-
-
-CHECK_FOR_OPTION(tiff, [
-	AC_MSG_CHECKING([if perhaps libtiff requires zlib])
-	AC_MSG_RESULT([])
-	unset ac_cv_lib_tiff_TIFFReadRGBAImage
-	AC_CHECK_HEADERS(tiffio.h,[],[a=1])
-	AC_CHECK_LIB(z, deflate,[],[a=1])
-	AC_CHECK_LIB(tiff, TIFFReadRGBAImage,[],[a=1])
-],[
-	APPEND(dodginess_options, tiff_needs_zlib)
 ])
 
 
@@ -947,6 +725,7 @@ AC_SUBST(CXXFLAGS, $CXXFLAGS)
 AC_SUBST(OFLAGS, $OFLAGS)
 	
 echo $CXXFLAGS
+echo $CPPFLAGS
 echo $LIBS
 
 

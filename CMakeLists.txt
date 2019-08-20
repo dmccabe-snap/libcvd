@@ -1,20 +1,18 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 project(CVD)
 enable_testing()
 
-include(TestBigEndian)
+option(CVD_ENABLE_TESTS "Build libCVD tests" ON)
+option(CVD_ENABLE_PROGS "Build libCVD programs" ON)
+option(CVD_ENABLE_EXAMPLES "Build libCVD examples" ON)
 
-set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+include(TestBigEndian)
+include(CheckSymbolExists)
+
+set(CMAKE_DEBUG_POSTFIX _debug)
 
 # Dependencies that can be automatically found by CMake.
-
-find_package(JPEG)
-find_package(PNG)
-find_package(TIFF)
-find_package(TooN)
-find_package(X11)
-find_package(dc1394v2)
-find_package(OpenGL)
+include(cmake/CVDFindAllDeps.cmake)
 
 # Detect endianness
 
@@ -89,8 +87,6 @@ set(HEADERS
 	cvd/bgrx.h
 	cvd/bresenham.h
 	cvd/byte.h
-	cvd/camera.h
-	cvd/canny.h
 	cvd/colourmap.h
 	cvd/colourspace.h
 	cvd/colourspacebuffer.h
@@ -106,7 +102,6 @@ set(HEADERS
 	cvd/distance_transform.h
 	cvd/documentation.h
 	cvd/draw.h
-	cvd/esm.h
 	cvd/exceptions.h
 	cvd/fast_corner.h
 	cvd/gles1_helpers.h
@@ -118,7 +113,6 @@ set(HEADERS
 	cvd/image.h
 	cvd/image_convert.h
 	cvd/image_convert_fwd.h
-	cvd/image_interpolate.h
 	cvd/image_io.h
 	cvd/image_ref.h
 	cvd/integral_image.h
@@ -138,7 +132,6 @@ set(HEADERS
 	cvd/timeddiskbuffer.h
 	cvd/timer.h
 	cvd/utility.h
-	cvd/vector_image_ref.h
 	cvd/videobuffer.h
 	cvd/videobufferflags.h
 	cvd/videobufferwithdata.h
@@ -177,7 +170,7 @@ set(HEADERS
 
 
 # Library-specific source files, headers and definitions.
-if(dc1394_FOUND)
+if(CVD_dc1394v2_FOUND)
 	list(APPEND SRCS
 		cvd_src/videosource_dvbuffer.cc
 		cvd_src/Linux/dvbuffer3_dc1394v2.cc)
@@ -185,13 +178,12 @@ if(dc1394_FOUND)
 		cvd/Linux/dvbuffer.h
 		cvd/Linux/dvbuffer3.h
 		cvd/Linux/dvframe.h)
-	link_libraries(${dc1394_LIBRARIES})
 else()
 	list(APPEND SRCS
 		cvd_src/videosource_nodvbuffer.cc)
 endif()
 
-if(OpenGL_FOUND)
+if(OpenGL_OpenGL_FOUND)
 	list(APPEND SRCS
 		cvd_src/gltext.cpp)
 
@@ -203,9 +195,7 @@ if(OpenGL_FOUND)
 
 		set(CVD_HAVE_GLWINDOW ON)
 		set(CVD_HAVE_VIDEODISPLAY ON)
-		link_libraries(${X11_LIBRARIES})
 	endif()
-	link_libraries(${OPENGL_LIBRARIES})
 endif()
 
 # Platform-specific source files, headers and definitions.
@@ -213,24 +203,17 @@ if(WIN32)
 	list(APPEND SRCS
 		cvd_src/Win32/win32.cpp
 		cvd_src/Win32/glwindow.cpp)
-	set(CVD_HAVE_GLOB OFF)
 	set(CVD_HAVE_GLWINDOW ON)
-	add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-else()
-    #I'm not really sure this is the correct solution?
-	#This will always force the compiler into c++14 mode
-	#even if it's in C++17 mode, I think.
-	add_compile_options(--std=c++14)
-
-	list(APPEND SRCS
-		cvd_src/globlist.cxx)
-		
-	set(CVD_HAVE_GLOB ON)
-	link_libraries(pthread)
-		
 endif()
 
-if(USE_V4L)
+check_symbol_exists(glob glob.h CVD_HAVE_GLOB)
+
+if(CVD_HAVE_GLOB)
+	list(APPEND SRCS cvd_src/globlist.cxx)
+endif()
+
+check_symbol_exists(V4L2_PIX_FMT_GREY linux/videodev2.h CVD_HAVE_V4L)
+if(CVD_HAVE_V4L)
 	list(APPEND SRCS
 		cvd_src/Linux/v4lbuffer.cc
 		cvd_src/Linux/v4lcontrol.cc
@@ -242,7 +225,8 @@ else()
 	list(APPEND SRCS cvd_src/Linux/videosource_nov4lbuffer.cc)
 endif()
 
-if(USE_UVC)
+check_symbol_exists(uvc_stream_get_frame libuvc/libuvc.h CVD_HAVE_UVC)
+if(CVD_HAVE_UVC)
 	list(APPEND SRCS
 		cvd_src/uvcbuffer.cc
 		cvd_src/videosource_uvcbuffer.cc)
@@ -252,17 +236,19 @@ else()
 		cvd_src/videosource_nouvcbuffer.cc)
 endif()
 
-if(USE_AVCODEC)
-	list(APPEND SRCS cvd_src/videofilebuffer2.cc
+
+if(CVD_FFMPEG_FOUND)
+	set(CVD_HAVE_FFMPEG ON)
+	list(APPEND SRCS
+		cvd_src/videofilebuffer2.cc
 		cvd_src/videosource_videofilebuffer.cc)
 else()
+	set(CVD_HAVE_FFMPEG OFF)
 	list(APPEND SRCS
 		cvd_src/videosource_novideofilebuffer.cc)
 endif()
 
-
-if(TooN_FOUND)
-	include_directories("${TooN_INCLUDE_DIRS}")
+if(CVD_TooN_FOUND)
 	set(CVD_HAVE_TOON ON)
 	list(APPEND SRCS
 		cvd_src/brezenham.cc
@@ -271,15 +257,18 @@ if(TooN_FOUND)
 		cvd_src/threepointpose.cpp)
 	list(APPEND HEADERS
 		cvd/brezenham.h
+		cvd/camera.h
+		cvd/canny.h
+		cvd/esm.h
+		cvd/image_interpolate.h
 		cvd/tensor_voting.h
+		cvd/vector_image_ref.h
 		cvd/geometry/threepointpose.h)
 else()
 	set(CVD_HAVE_TOON OFF)
 endif()
 
-if(JPEG_INCLUDE_DIR)
-	include_directories("${JPEG_INCLUDE_DIR}")
-	link_libraries(${JPEG_LIBRARIES})
+if(JPEG_FOUND)
 	set(CVD_HAVE_JPEG ON)
 	set(CVD_INTERNAL_JPEG_BUFFER_SIZE 1)
     list(APPEND SRCS cvd_src/image_io/jpeg.cxx)
@@ -288,9 +277,7 @@ else()
 	set(CVD_INTERNAL_JPEG_BUFFER_SIZE OFF)
 endif()
 
-if(TIFF_INCLUDE_DIRS)
-	include_directories("${TIFF_INCLUDE_DIRS}")
-	link_libraries(${TIFF_LIBRARIES})
+if(TIFF_FOUND)
 	set(CVD_HAVE_TIFF ON)
     list(APPEND SRCS
 		cvd_src/image_io/tiff.cxx
@@ -299,9 +286,7 @@ else()
 	set(CVD_HAVE_TIFF OFF)
 endif()
 
-if(PNG_INCLUDE_DIRS)
-	include_directories("${PNG_INCLUDE_DIRS}")
-	link_libraries(${PNG_LIBRARIES})
+if(PNG_FOUND)
 	set(CVD_HAVE_PNG ON)
     list(APPEND SRCS cvd_src/image_io/png.cc)
 else()
@@ -311,9 +296,15 @@ endif()
 configure_file(cmake/config.h.in include/cvd/config.h)
 configure_file(cmake/config_internal.h.in include/cvd_src/config_internal.h)
 
-set(CMAKE_DEBUG_POSTFIX _debug)
-include_directories("${PROJECT_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/include")
 add_library(${PROJECT_NAME} ${SRCS} ${HEADERS})
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_14)
+target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/include" ${CVD_DEP_INCLUDES_PUBLIC} PRIVATE ${CVD_DEP_INCLUDES_PRIVATE})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${CVD_DEP_LIBS})
+
+
+if(WIN32)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 
 install(TARGETS ${PROJECT_NAME} ARCHIVE DESTINATION lib LIBRARY DESTINATION lib)
 foreach(file ${HEADERS})
@@ -321,9 +312,14 @@ foreach(file ${HEADERS})
 	install(FILES ${file} DESTINATION include/${dir})
 endforeach()
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/cvd DESTINATION include)
-install(FILES ${PROJECT_SOURCE_DIR}/cmake/CVDConfig.cmake DESTINATION cmake)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/cmake DESTINATION . FILES_MATCHING PATTERN *.cmake)
 
-add_subdirectory(tests)
-add_subdirectory(progs)
-add_subdirectory(examples)
-
+if(CVD_ENABLE_TESTS)
+	add_subdirectory(tests)
+endif()
+if(CVD_ENABLE_PROGS)
+	add_subdirectory(progs)
+endif()
+if(CVD_ENABLE_EXAMPLES)
+	add_subdirectory(examples)
+endif()

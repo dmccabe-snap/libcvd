@@ -1,9 +1,5 @@
 #include <cvd/fast_corner.h>
 #include <cvd/image_io.h>
-#include <cvd/gl_helpers.h>
-#if 0
-#include <cvd/videodisplay.h>
-#endif
 #include <utility>
 #include <algorithm>
 #include <iterator>
@@ -73,7 +69,7 @@ template<int Num> void segment_test(const BasicImage<byte>& im, vector<ImageRef>
 
 
 
-template<class A, class B, class C> void test(const Image<byte>& i, A funcf, B funcp, C funcs, int threshold, string type)
+template<class A, class B, class C> void test(const SubImage<byte>& i, A funcf, B funcp, C funcs, int threshold, string type)
 {
 
 	vector<ImageRef> faster, normal, simple;
@@ -110,46 +106,9 @@ template<class A, class B, class C> void test(const Image<byte>& i, A funcf, B f
 	cout << "fail." << endl;
 	
 	exit(1);
-		
-
-	#if 0
-		VideoDisplay d(i.size(), 2);
-
-		glDrawPixels(i);
-		glPointSize(3);
-		glBegin(GL_POINTS);
-
-		for(unsigned int i=0; i < all.size(); i++)
-		{
-			Rgb<byte> colour(0,0,0);
-
-			if(!binary_search(normal.begin(), normal.end(), all[i]))
-				colour.red = 255;
-
-			if(!binary_search(faster.begin(), faster.end(), all[i]))
-				colour.green = 255;
-
-			if(!binary_search(simple.begin(),simple.end(), all[i]))
-				colour.blue = 255;
-
-			//Colour can never be white. Black means OK.
-
-			if(colour != Rgb<byte>(0,0,0))
-			{
-				glColor(colour);
-				glVertex(all[i]);
-			}
-		}
-		glEnd();
-
-		cout << "\x1b[31m BROKEN!\x1b[0m\n";
-
-		cin.get();
-
-	#endif
 }
 
-template<class A, class B, class C> void test_images(const Image<byte>& im, A funcf, B funcp, C funcs, int threshold, string type)
+template<class A, class B, class C> void test_images(const SubImage<byte>& im, A funcf, B funcp, C funcs, int threshold, string type)
 {
 	ImageRef one(1,1);
 	ImageRef zero(0,0);
@@ -162,11 +121,14 @@ template<class A, class B, class C> void test_images(const Image<byte>& im, A fu
 		{
 			ImageRef size = im.size() - i * one;
 
+			if(size.x <= 0 || size.y <= 0)
+				continue;
+
 			Image<byte> part(size);
 			BasicImage<byte> s = im.sub_image(zero, size);
-			copy(s.begin(), s.end(),part.begin());
+			//copy(s.begin(), s.end(),part.begin());
 
-			test(part, funcf, funcp, funcs, threshold, type);
+			test(s, funcf, funcp, funcs, threshold, type);
 		}
 	}
 }
@@ -177,7 +139,7 @@ int main(int , char** )
 	std::random_device device;
 	std::ranlux48 engine(device());
 	std::uniform_real_distribution<> distribution(0.0, 1.0);
-	for(int n=16; n < 100; n+=16)
+	for(int n=16; n < 100; n+=1)
 	{
 		Image<byte> im(ImageRef(n, n));
 
@@ -185,12 +147,23 @@ int main(int , char** )
 			*i =  (distribution(engine) * 256);
 
 		
-		for(int k=0; k < 10; k++)
+		for(int k=0; k < 2; k++)
 		{
+			ImageRef start;
+			start.x = distribution(engine)*(n/2);
+			start.y = distribution(engine)*(n/2);
+
+			ImageRef size = im.size() - start;
+			size.x = distribution(engine)*(size.x-1) + 1;
+			size.y = distribution(engine)*(size.y-1) + 1;
+
+			SubImage<byte> ims = im.sub_image(start, size);
+
+
 			int threshold = distribution(engine) * 256;
-			test_images(im, fast_corner_detect_9, fast_corner_detect_plain_9, segment_test<9>, threshold, "FAST9");
-			test_images(im, fast_corner_detect_10, fast_corner_detect_plain_10, segment_test<10>, threshold, "FAST10");
-			test_images(im, fast_corner_detect_12, fast_corner_detect_plain_12, segment_test<12>, threshold, "FAST12");
+			test_images(ims, fast_corner_detect_9, fast_corner_detect_plain_9, segment_test<9>, threshold, "FAST9");
+			test_images(ims, fast_corner_detect_10, fast_corner_detect_plain_10, segment_test<10>, threshold, "FAST10");
+			test_images(ims, fast_corner_detect_12, fast_corner_detect_plain_12, segment_test<12>, threshold, "FAST12");
 		}
 	}
 }
